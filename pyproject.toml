@@ -1,0 +1,15 @@
+[project]
+name = "lychee-pre-commit"
+version = "0.0.0"
+description = "Pre-commit hook for lychee, the fast link checker."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+keywords = ["link-checker", "links", "pre-commit", "rust"]
+dependencies = [
+    "lychee-bin==0.24.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/lycheeverse/lychee"
+Repository = "https://github.com/owenlamont/lychee-pre-commit"

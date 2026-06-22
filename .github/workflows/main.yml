@@ -1,0 +1,92 @@
+name: main
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+
+      - name: Configure git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Mirror latest lychee-bin release
+        run: uv run --no-project mirror.py
+
+      - name: Check for unpushed commits
+        id: check_unpushed
+        run: |
+          UNPUSHED_COMMITS=$(git log origin/main..HEAD)
+          if [ -z "$UNPUSHED_COMMITS" ]; then
+            echo "changes_exist=false" >> $GITHUB_ENV
+          else
+            echo "changes_exist=true" >> $GITHUB_ENV
+          fi
+
+      - name: Push changes
+        if: env.changes_exist == 'true'
+        run: |
+          git fetch origin main
+          git rebase origin/main
+
+          UNPUSHED_COMMITS=$(git log origin/main..HEAD)
+          if [ -z "$UNPUSHED_COMMITS" ]; then
+            echo "changes_exist=false" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          git push --atomic origin HEAD:refs/heads/main --tags
+
+      - name: Reconcile releases from tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch --tags origin
+
+          mapfile -t TAGS < <(git tag --list 'v*' --sort=v:refname)
+          if [ ${#TAGS[@]} -eq 0 ]; then
+            echo "No v* tags found; skipping release reconciliation."
+            exit 0
+          fi
+
+          LATEST_TAG="${TAGS[$((${#TAGS[@]} - 1))]}"
+          MISSING_RELEASES=0
+
+          for TAG_NAME in "${TAGS[@]}"; do
+            if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              continue
+            fi
+
+            echo "Creating missing release for $TAG_NAME"
+            MISSING_RELEASES=1
+            gh release create "$TAG_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG_NAME" \
+              --notes "See: https://github.com/lycheeverse/lychee/releases/tag/lychee-${TAG_NAME}"
+          done
+
+          if [ "$MISSING_RELEASES" -eq 0 ]; then
+            echo "No missing releases found."
+          fi
+
+          gh release edit "$LATEST_TAG" --repo "$GITHUB_REPOSITORY" --latest

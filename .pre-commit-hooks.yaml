@@ -1,0 +1,10 @@
+- id: lychee
+  name: lychee
+  description: "Run 'lychee' for fast, async, stream-based link checking"
+  entry: lychee
+  language: python
+  args: ["--no-progress"]
+  types: [text]
+  pass_filenames: true
+  require_serial: true
+  minimum_pre_commit_version: "2.9.2"
